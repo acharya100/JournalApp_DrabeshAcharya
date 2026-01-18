@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>JournalApp</title>
+    <base href="/" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="css/dashboard.css" />
+    <link rel="stylesheet" href="css/theme.css" />
+    <link rel="stylesheet" href="JournalApp.styles.css" />
+    <link rel="icon" href="data:,">
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+    <script>
+        // Function to apply theme from Blazor
+        window.applyTheme = function (theme) {
+            document.documentElement.setAttribute('data-bs-theme', theme);
+            localStorage.setItem('JournalApp_Theme', theme);
+        };
+
+        // Apply theme on page load
+        (function () {
+            const savedTheme = localStorage.getItem('JournalApp_Theme') || 'light';
+            document.documentElement.setAttribute('data-bs-theme', savedTheme);
+        })();
+
+        // Quill JS Interop
+        window.quillEditors = {};
+
+        window.initQuill = function (elementId, content, placeholder) {
+            var element = document.getElementById(elementId);
+            if (!element) return;
+
+            // Check if we have a stored instance
+            if (window.quillEditors[elementId]) {
+                // Check if the DOM element is actually initialized (has the Quill structure)
+                // If the element is clean (no .ql-container), it means we have a fresh DOM 
+                // but a stale JS reference. We should proceed to initialize.
+                if (element.querySelector('.ql-container')) {
+                    return; // Truly already initialized
+                } else {
+                    // Stale reference - clear it and re-init
+                    delete window.quillEditors[elementId];
+                }
+            }
+
+            var quill = new Quill('#' + elementId, {
+                theme: 'snow',
+                placeholder: placeholder || 'Compose an epic...',
+                modules: {
+                    toolbar: [
+                        ['bold', 'italic', 'underline', 'strike'],        // toggled buttons
+                        ['blockquote', 'code-block'],
+                        [{ 'header': 1 }, { 'header': 2 }],               // custom button values
+                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                        [{ 'script': 'sub' }, { 'script': 'super' }],      // superscript/subscript
+                        [{ 'indent': '-1' }, { 'indent': '+1' }],          // outdent/indent
+                        [{ 'direction': 'rtl' }],                         // text direction
+                        [{ 'size': ['small', false, 'large', 'huge'] }],  // custom dropdown
+                        [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
+                        [{ 'color': [] }, { 'background': [] }],          // dropdown with defaults from theme
+                        [{ 'font': [] }],
+                        [{ 'align': [] }],
+                        ['clean']                                         // remove formatting button
+                    ]
+                }
+            });
+
+            if (content) {
+                quill.root.innerHTML = content;
+            }
+
+            // Add tooltips to toolbar buttons
+            const tooltipMap = {
+                'bold': 'Bold',
+                'italic': 'Italic',
+                'underline': 'Underline',
+                'strike': 'Strikethrough',
+                'blockquote': 'Blockquote',
+                'code-block': 'Code Block',
+                'list[value="ordered"]': 'Ordered List',
+                'list[value="bullet"]': 'Bullet List',
+                'script[value="sub"]': 'Subscript',
+                'script[value="super"]': 'Superscript',
+                'indent[value="-1"]': 'Decrease Indent',
+                'indent[value="+1"]': 'Increase Indent',
+                'direction': 'Text Direction',
+                'clean': 'Remove Formatting',
+                'link': 'Insert Link',
+                'image': 'Insert Image'
+            };
+
+            const toolbar = quill.getModule('toolbar');
+            if (toolbar) {
+                Object.keys(tooltipMap).forEach(format => {
+                    const button = toolbar.container.querySelector('.ql-' + format);
+                    if (button) {
+                        button.setAttribute('title', tooltipMap[format]);
+                    }
+                });
+
+                // Handle complex selectors or custom mapping if needed
+                const headers = toolbar.container.querySelectorAll('.ql-header');
+                headers.forEach(h => h.setAttribute('title', 'Header Style'));
+
+                const align = toolbar.container.querySelectorAll('.ql-align');
+                align.forEach(a => a.setAttribute('title', 'Text Alignment'));
+            }
+
+            window.quillEditors[elementId] = quill;
+        };
+
+        window.getQuillContent = function (elementId) {
+            var quill = window.quillEditors[elementId];
+            return quill ? quill.root.innerHTML : "";
+        };
+    </script>
+</head>
+
+<body>
+
+    <div class="status-bar-safe-area"></div>
+
+    <div id="app">Loading...</div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="" class="reload">Reload</a>
+        <a class="dismiss">🗙</a>
+    </div>
+
+    <script src="_framework/blazor.webview.js" autostart="false"></script>
+
+</body>
+
+</html>

@@ -1,0 +1,79 @@
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1px;
+    background-color: var(--bs-calendar-border-color);
+    border: 1px solid var(--bs-calendar-border-color);
+}
+
+.calendar-header {
+    display: contents;
+}
+
+.calendar-day-header {
+    background-color: var(--bs-calendar-header-bg);
+    color: var(--bs-body-color);
+    padding: 10px;
+    text-align: center;
+    font-weight: bold;
+    border-bottom: 2px solid var(--bs-calendar-border-color);
+}
+
+.calendar-body {
+    display: contents;
+}
+
+.calendar-day {
+    background-color: var(--bs-calendar-day-bg);
+    color: var(--bs-body-color);
+    min-height: 100px;
+    padding: 5px;
+    cursor: pointer;
+    position: relative;
+    transition: background-color 0.2s;
+}
+
+.calendar-day:hover {
+    background-color: var(--bs-calendar-day-hover-bg);
+}
+
+.calendar-day.other-month {
+    background-color: var(--bs-calendar-day-other-bg);
+    color: var(--bs-calendar-day-other-color);
+}
+
+.calendar-day.today {
+    background-color: var(--bs-calendar-today-bg);
+    font-weight: bold;
+}
+
+.calendar-day.has-entry {
+    border: 2px solid #4caf50;
+}
+
+.calendar-day.has-entry .entry-indicator {
+    position: absolute;
+    bottom: 5px;
+    right: 5px;
+    width: 8px;
+    height: 8px;
+    background-color: #4caf50;
+    border-radius: 50%;
+}
+
+.day-number {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+@media (max-width: 768px) {
+    .calendar-day {
+        min-height: 60px;
+        font-size: 0.9em;
+    }
+
+    .calendar-day-header {
+        padding: 5px;
+        font-size: 0.9em;
+    }
+}

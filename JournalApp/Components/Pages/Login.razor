@@ -1,0 +1,187 @@
+@page "/login"
+@inject IAuthService AuthService
+@inject IUserService UserService
+@inject NavigationManager Navigation
+@inject ILogger<JournalApp.Components.Pages.Login> Logger
+
+<div class="login-container">
+    <div class="login-card">
+        <h2 class="text-center mb-4">JournalApp</h2>
+        <h4 class="text-center mb-4">Welcome Back</h4>
+
+        @if (!string.IsNullOrEmpty(ErrorMessage))
+        {
+            <div class="alert alert-danger" role="alert">
+                @ErrorMessage
+            </div>
+        }
+
+        <EditForm Model="@loginModel" OnValidSubmit="@HandleLogin">
+            <DataAnnotationsValidator />
+            <div class="mb-3">
+                <label for="username" class="form-label">Username</label>
+                <InputText id="username" class="form-control" @bind-Value="loginModel.Username" />
+                <ValidationMessage For="@(() => loginModel.Username)" />
+            </div>
+
+            <div class="mb-3">
+                <label for="password" class="form-label">Password</label>
+                <InputText id="password" type="password" class="form-control" @bind-Value="loginModel.Password" />
+                <ValidationMessage For="@(() => loginModel.Password)" />
+            </div>
+
+            <div class="mb-3">
+                <button type="submit" class="btn btn-primary w-100" disabled="@isLoading">
+                    @if (isLoading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                    }
+                    Login
+                </button>
+            </div>
+        </EditForm>
+
+        <hr class="my-4" />
+        <div class="text-center">
+            <p>Don't have an account?</p>
+            <button class="btn btn-outline-primary" @onclick="ShowRegister">Register</button>
+        </div>
+
+        @if (showRegister)
+        {
+            <div class="mt-4 p-3 border rounded">
+                <h5>Create Account</h5>
+                <EditForm Model="@registerModel" OnValidSubmit="@HandleRegister">
+                    <DataAnnotationsValidator />
+                    <div class="mb-3">
+                        <label for="reg-username" class="form-label">Username</label>
+                        <InputText id="reg-username" class="form-control" @bind-Value="registerModel.Username" />
+                        <ValidationMessage For="@(() => registerModel.Username)" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="reg-password" class="form-label">Password</label>
+                        <InputText id="reg-password" type="password" class="form-control" @bind-Value="registerModel.Password" />
+                        <ValidationMessage For="@(() => registerModel.Password)" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="reg-confirm-password" class="form-label">Confirm Password</label>
+                        <InputText id="reg-confirm-password" type="password" class="form-control" @bind-Value="registerModel.ConfirmPassword" />
+                        <ValidationMessage For="@(() => registerModel.ConfirmPassword)" />
+                    </div>
+
+                    <button type="submit" class="btn btn-success w-100" disabled="@isLoading">
+                        Register
+                    </button>
+                </EditForm>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private LoginModel loginModel = new();
+    private RegisterModel registerModel = new();
+    private bool isLoading = false;
+    private bool showRegister = false;
+    private string? ErrorMessage;
+
+    protected override void OnInitialized()
+    {
+        if (AuthService.IsAuthenticated)
+        {
+            Navigation.NavigateTo("/");
+        }
+    }
+
+    private async Task HandleLogin()
+    {
+        try
+        {
+            isLoading = true;
+            ErrorMessage = null;
+
+            var success = await AuthService.LoginAsync(loginModel.Username, loginModel.Password);
+            if (success)
+            {
+                Navigation.NavigateTo("/");
+            }
+            else
+            {
+                ErrorMessage = "Invalid username or password";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error during login");
+            ErrorMessage = "An error occurred during login. Please try again.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task HandleRegister()
+    {
+        try
+        {
+            isLoading = true;
+            ErrorMessage = null;
+
+            if (registerModel.Password != registerModel.ConfirmPassword)
+            {
+                ErrorMessage = "Passwords do not match";
+                return;
+            }
+
+            var user = await UserService.CreateUserAsync(registerModel.Username, registerModel.Password);
+            if (user != null)
+            {
+                var success = await AuthService.LoginAsync(registerModel.Username, registerModel.Password);
+                if (success)
+                {
+                    Navigation.NavigateTo("/");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error during registration");
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ShowRegister()
+    {
+        showRegister = !showRegister;
+    }
+
+    private class LoginModel
+    {
+        [Required(ErrorMessage = "Username is required")]
+        public string Username { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Password is required")]
+        public string Password { get; set; } = string.Empty;
+    }
+
+    private class RegisterModel
+    {
+        [Required(ErrorMessage = "Username is required")]
+        [StringLength(100, MinimumLength = 3, ErrorMessage = "Username must be between 3 and 100 characters")]
+        public string Username { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Password is required")]
+        [StringLength(100, MinimumLength = 6, ErrorMessage = "Password must be at least 6 characters")]
+        public string Password { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Please confirm your password")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+}

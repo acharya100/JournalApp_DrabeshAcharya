@@ -1,0 +1,120 @@
+@page "/journal/export"
+@using JournalApp.Models
+@inject IAuthService AuthService
+@inject IJournalService JournalService
+@inject IPdfExportService PdfExportService
+@inject NavigationManager Navigation
+@inject ILogger<JournalApp.Components.Pages.Export> Logger
+@attribute [Authorize]
+
+<div class="export-container">
+    <h2 class="mb-4">Export Journal Entries</h2>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Select Date Range</h5>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="exportStartDate" class="form-label">Start Date</label>
+                    <InputDate id="exportStartDate" class="form-control" @bind-Value="startDate" />
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="exportEndDate" class="form-label">End Date</label>
+                    <InputDate id="exportEndDate" class="form-control" @bind-Value="endDate" />
+                </div>
+            </div>
+            <button class="btn btn-primary" @onclick="HandleExport" disabled="@isExporting">
+                @if (isExporting)
+                {
+                    <span class="spinner-border spinner-border-sm me-2"></span>
+                }
+                Export to PDF
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(exportMessage))
+    {
+        <div class="alert @(exportSuccess ? "alert-success" : "alert-danger")">
+            @exportMessage
+        </div>
+    }
+</div>
+
+@code {
+    private DateTime? startDate;
+    private DateTime? endDate;
+    private bool isExporting = false;
+    private string? exportMessage;
+    private bool exportSuccess = false;
+
+    protected override void OnInitialized()
+    {
+        if (!AuthService.IsAuthenticated || !AuthService.CurrentUserId.HasValue)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        // Default to last 30 days
+        endDate = DateTime.Now.Date;
+        startDate = endDate.Value.AddDays(-30);
+    }
+
+    private async Task HandleExport()
+    {
+        if (!AuthService.IsAuthenticated || !AuthService.CurrentUserId.HasValue)
+            return;
+
+        if (!startDate.HasValue || !endDate.HasValue)
+        {
+            exportMessage = "Please select both start and end dates";
+            exportSuccess = false;
+            return;
+        }
+
+        try
+        {
+            isExporting = true;
+            exportMessage = null;
+
+            var entries = await JournalService.FilterEntriesAsync(
+                AuthService.CurrentUserId.Value,
+                startDate,
+                endDate,
+                null,
+                null
+            );
+
+            if (!entries.Any())
+            {
+                exportMessage = "No entries found for the selected date range";
+                exportSuccess = false;
+                return;
+            }
+
+            var pdfBytes = await PdfExportService.ExportEntriesToPdfAsync(
+                AuthService.CurrentUserId.Value,
+                entries,
+                startDate,
+                endDate
+            );
+
+            var fileName = $"JournalExport_{startDate:yyyyMMdd}_to_{endDate:yyyyMMdd}.pdf";
+            var filePath = await PdfExportService.SavePdfToFileAsync(pdfBytes, fileName);
+
+            exportMessage = $"PDF exported successfully to: {filePath}";
+            exportSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error exporting PDF");
+            exportMessage = "An error occurred while exporting: " + ex.Message;
+            exportSuccess = false;
+        }
+        finally
+        {
+            isExporting = false;
+        }
+    }
+}

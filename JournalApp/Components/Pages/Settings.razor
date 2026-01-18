@@ -1,0 +1,175 @@
+@page "/settings"
+@inject IAuthService AuthService
+@inject IUserService UserService
+@inject NavigationManager Navigation
+@inject ILogger<Settings> Logger
+@inject IJSRuntime JSRuntime
+@attribute [Authorize]
+
+<div class="settings-container">
+    <h2 class="mb-4">Settings</h2>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5>Change Password</h5>
+                </div>
+                <div class="card-body">
+                    <EditForm Model="@passwordModel" OnValidSubmit="@HandleChangePassword">
+                        <DataAnnotationsValidator />
+                        <div class="mb-3">
+                            <label for="oldPassword" class="form-label">Current Password</label>
+                            <InputText id="oldPassword" type="password" class="form-control" @bind-Value="passwordModel.OldPassword" />
+                            <ValidationMessage For="@(() => passwordModel.OldPassword)" />
+                        </div>
+                        <div class="mb-3">
+                            <label for="newPassword" class="form-label">New Password</label>
+                            <InputText id="newPassword" type="password" class="form-control" @bind-Value="passwordModel.NewPassword" />
+                            <ValidationMessage For="@(() => passwordModel.NewPassword)" />
+                        </div>
+                        <div class="mb-3">
+                            <label for="confirmPassword" class="form-label">Confirm New Password</label>
+                            <InputText id="confirmPassword" type="password" class="form-control" @bind-Value="passwordModel.ConfirmPassword" />
+                            <ValidationMessage For="@(() => passwordModel.ConfirmPassword)" />
+                        </div>
+                        <button type="submit" class="btn btn-primary" disabled="@isChangingPassword">
+                            @if (isChangingPassword)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2"></span>
+                            }
+                            Change Password
+                        </button>
+                    </EditForm>
+                    @if (!string.IsNullOrEmpty(passwordMessage))
+                    {
+                        <div class="alert @(passwordSuccess ? "alert-success" : "alert-danger") mt-3">
+                            @passwordMessage
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Theme</h5>
+                </div>
+                <div class="card-body">
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="theme" id="lightTheme" value="light" checked="@(currentTheme == "light")" @onchange="@(() => ChangeTheme("light"))" />
+                        <label class="form-check-label" for="lightTheme">Light</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="theme" id="darkTheme" value="dark" checked="@(currentTheme == "dark")" @onchange="@(() => ChangeTheme("dark"))" />
+                        <label class="form-check-label" for="darkTheme">Dark</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private PasswordChangeModel passwordModel = new();
+    private bool isChangingPassword = false;
+    private string? passwordMessage;
+    private bool passwordSuccess = false;
+    private string currentTheme = "light";
+
+    private async Task HandleChangePassword()
+    {
+        if (!AuthService.IsAuthenticated || !AuthService.CurrentUserId.HasValue)
+            return;
+
+        if (passwordModel.NewPassword != passwordModel.ConfirmPassword)
+        {
+            passwordMessage = "New passwords do not match";
+            passwordSuccess = false;
+            return;
+        }
+
+        try
+        {
+            isChangingPassword = true;
+            passwordMessage = null;
+
+            var success = await UserService.ChangePasswordAsync(
+                AuthService.CurrentUserId.Value,
+                passwordModel.OldPassword,
+                passwordModel.NewPassword
+            );
+
+            if (success)
+            {
+                passwordMessage = "Password changed successfully";
+                passwordSuccess = true;
+                passwordModel = new PasswordChangeModel();
+            }
+            else
+            {
+                passwordMessage = "Current password is incorrect";
+                passwordSuccess = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error changing password");
+            passwordMessage = "An error occurred: " + ex.Message;
+            passwordSuccess = false;
+        }
+        finally
+        {
+            isChangingPassword = false;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!AuthService.IsAuthenticated || !AuthService.CurrentUserId.HasValue)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+        
+        // Load saved theme preference
+        currentTheme = Preferences.Get("JournalApp_Theme", "light");
+        await ApplyThemeAsync(currentTheme);
+    }
+
+    private async Task ChangeTheme(string theme)
+    {
+        currentTheme = theme;
+        Preferences.Set("JournalApp_Theme", theme);
+        await ApplyThemeAsync(theme);
+    }
+
+    private async Task ApplyThemeAsync(string theme)
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("applyTheme", theme);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error applying theme");
+        }
+    }
+
+    private class PasswordChangeModel
+    {
+        [Required(ErrorMessage = "Current password is required")]
+        public string OldPassword { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "New password is required")]
+        [StringLength(100, MinimumLength = 6, ErrorMessage = "Password must be at least 6 characters")]
+        public string NewPassword { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Please confirm your password")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+}

@@ -1,0 +1,243 @@
+@page "/"
+@page "/dashboard"
+@using JournalApp.Models
+@inject IAuthService AuthService
+@inject IAnalyticsService AnalyticsService
+@inject NavigationManager Navigation
+@inject ILogger<Dashboard> Logger
+@attribute [Authorize]
+
+<div class="dashboard-container">
+    <h2 class="mb-4">Dashboard</h2>
+
+    @if (isLoading)
+    {
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else if (analytics != null)
+    {
+        <div class="row mb-4">
+            <div class="col-md-3 mb-3">
+                <div class="card stat-card">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Entries</h5>
+                        <h2 class="text-primary">@analytics.TotalEntries</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card stat-card">
+                    <div class="card-body">
+                        <h5 class="card-title">Current Streak</h5>
+                        <h2 class="text-success">@analytics.StreakInfo.CurrentStreak days</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card stat-card">
+                    <div class="card-body">
+                        <h5 class="card-title">Longest Streak</h5>
+                        <h2 class="text-info">@analytics.StreakInfo.LongestStreak days</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card stat-card">
+                    <div class="card-body">
+                        <h5 class="card-title">Most Frequent Mood</h5>
+                        <h4 class="text-warning">@(analytics.MostFrequentMood ?? "N/A")</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-6 mb-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Mood Distribution</h5>
+                    </div>
+                    <div class="card-body">
+                        @if (analytics.MoodDistributionByCategory.Any())
+                        {
+                            <div class="mood-distribution">
+                                @foreach (var mood in analytics.MoodDistributionByCategory)
+                                {
+                                    <div class="mb-3">
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <span class="fw-bold">@mood.Category</span>
+                                            <span>@mood.Count entries (@mood.Percentage.ToString("F1")%)</span>
+                                        </div>
+                                        <div class="progress" style="height: 25px;">
+                                            <div class="progress-bar 
+                                                @(mood.Category == "Positive" ? "bg-success" : 
+                                                  mood.Category == "Neutral" ? "bg-info" : "bg-warning")" 
+                                                role="progressbar" 
+                                                style="width: @mood.Percentage%"
+                                                aria-valuenow="@mood.Percentage" 
+                                                aria-valuemin="0" 
+                                                aria-valuemax="100">
+                                                @mood.Percentage.ToString("F1")%
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-muted">No mood data available</p>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 mb-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Most Used Tags</h5>
+                    </div>
+                    <div class="card-body">
+                        @if (analytics.MostUsedTags.Any())
+                        {
+                            <ul class="list-group">
+                                @foreach (var tag in analytics.MostUsedTags.Take(10))
+                                {
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        @tag.TagName
+                                        <span class="badge bg-primary rounded-pill">@tag.Count</span>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                        else
+                        {
+                            <p class="text-muted">No tag data available</p>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Word Count Trends</h5>
+                    </div>
+                    <div class="card-body">
+                        @if (analytics.WordCountTrends.Any())
+                        {
+                            <div class="word-count-trends" style="max-height: 400px; overflow-y: auto;">
+                                <table class="table table-sm table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Word Count</th>
+                                            <th>Average Words</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var trend in analytics.WordCountTrends.OrderByDescending(t => t.Date))
+                                        {
+                                            <tr>
+                                                <td>@trend.Date.ToString("MMM dd, yyyy")</td>
+                                                <td>@trend.WordCount</td>
+                                                <td>@trend.AverageWords.ToString("F1")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-muted">No word count data available</p>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Missed Days</h5>
+                    </div>
+                    <div class="card-body">
+                        @if (analytics.StreakInfo.MissedDays.Any())
+                        {
+                            <p>You missed <strong>@analytics.StreakInfo.MissedDays.Count</strong> day(s):</p>
+                            <div class="d-flex flex-wrap gap-2">
+                                @foreach (var date in analytics.StreakInfo.MissedDays.Take(30))
+                                {
+                                    <span class="badge bg-secondary">@date.ToString("yyyy-MM-dd")</span>
+                                }
+                                @if (analytics.StreakInfo.MissedDays.Count > 30)
+                                {
+                                    <span class="badge bg-info">... and @(analytics.StreakInfo.MissedDays.Count - 30) more</span>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-success mb-0">
+                                <strong>Great job!</strong> You haven't missed any days. Keep up the consistency! 🎉
+                            </p>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5>Quick Actions</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2 d-md-flex">
+                            <a href="/journal/new" class="btn btn-primary">New Entry</a>
+                            <a href="/journal/list" class="btn btn-outline-primary">View All Entries</a>
+                            <a href="/journal/calendar" class="btn btn-outline-primary">Calendar View</a>
+                            <a href="/journal/search" class="btn btn-outline-primary">Search Entries</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private DashboardAnalytics? analytics;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!AuthService.IsAuthenticated || !AuthService.CurrentUserId.HasValue)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        try
+        {
+            analytics = await AnalyticsService.GetDashboardAnalyticsAsync(AuthService.CurrentUserId.Value);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading dashboard analytics");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+}

@@ -1,0 +1,244 @@
+@page "/journal/search"
+@using JournalApp.Models
+@inject IAuthService AuthService
+@inject IJournalService JournalService
+@inject IMoodService MoodService
+@inject ITagService TagService
+@inject NavigationManager Navigation
+@inject ILogger<JournalSearch> Logger
+@attribute [Authorize]
+
+<div class="search-container">
+    <h2 class="mb-4">Search & Filter Entries</h2>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="searchTerm" class="form-label">Search</label>
+                    <input type="text" id="searchTerm" class="form-control" @bind="searchTerm" @bind:event="oninput" placeholder="Search by title or content..." />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="startDate" class="form-label">Start Date</label>
+                    <InputDate id="startDate" class="form-control" @bind-Value="startDate" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="endDate" class="form-label">End Date</label>
+                    <InputDate id="endDate" class="form-control" @bind-Value="endDate" />
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Filter by Moods</label>
+                    <div style="max-height: 150px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px;">
+                        @foreach (var mood in allMoods)
+                        {
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" 
+                                       checked="@selectedMoodIds.Contains(mood.MoodId)"
+                                       @onchange="@((e) => ToggleMood(mood.MoodId, e.Value))" />
+                                <label class="form-check-label">@mood.Emoji @mood.MoodName</label>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Filter by Tags</label>
+                    <div style="max-height: 150px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px;">
+                        @foreach (var tag in allTags)
+                        {
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" 
+                                       checked="@selectedTagIds.Contains(tag.TagId)"
+                                       @onchange="@((e) => ToggleTag(tag.TagId, e.Value))" />
+                                <label class="form-check-label">@tag.TagName</label>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary" @onclick="HandleSearch">Search</button>
+                <button class="btn btn-secondary" @onclick="HandleClear">Clear Filters</button>
+            </div>
+        </div>
+    </div>
+
+    @if (isSearching)
+    {
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Searching...</span>
+            </div>
+        </div>
+    }
+    else if (searchResults.Any())
+    {
+        <div class="alert alert-info">
+            Found @searchResults.Count entries
+        </div>
+
+        <div class="list-group">
+            @foreach (var entry in searchResults)
+            {
+                <div class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <h5 class="mb-1">
+                                <a href="/journal/edit/@entry.EntryId" class="text-decoration-none">
+                                    @entry.JournalTitle
+                                </a>
+                            </h5>
+                            <p class="mb-1 text-muted">
+                                <small>@entry.EntryDate.ToString("MMMM dd, yyyy")</small>
+                            </p>
+                            <p class="mb-1">
+                                @if (entry.Content.Length > 200)
+                                {
+                                    @(entry.Content.Substring(0, 200) + "...")
+                                }
+                                else
+                                {
+                                    @entry.Content
+                                }
+                            </p>
+                            <div class="mt-2">
+                                <span class="badge bg-primary me-1">@entry.PrimaryMood?.MoodName</span>
+                                @if (entry.SecondaryMoods != null && entry.SecondaryMoods.Any())
+                                {
+                                    @foreach (var sm in entry.SecondaryMoods)
+                                    {
+                                        <span class="badge bg-secondary me-1">@sm.Mood?.MoodName</span>
+                                    }
+                                }
+                                @if (entry.Tags != null && entry.Tags.Any())
+                                {
+                                    @foreach (var tag in entry.Tags)
+                                    {
+                                        <span class="badge bg-info me-1">@tag.Tag?.TagName</span>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else if (hasSearched)
+    {
+        <div class="alert alert-warning">
+            No entries found matching your criteria.
+        </div>
+    }
+</div>
+
+@code {
+    private List<JournalEntry> searchResults = new();
+    private List<Mood> allMoods = new();
+    private List<Tag> allTags = new();
+    private string searchTerm = string.Empty;
+    private DateTime? startDate;
+    private DateTime? endDate;
+    private List<int> selectedMoodIds = new();
+    private List<int> selectedTagIds = new();
+    private bool isSearching = false;
+    private bool hasSearched = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!AuthService.IsAuthenticated || !AuthService.CurrentUserId.HasValue)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        try
+        {
+            allMoods = await MoodService.GetAllMoodsAsync();
+            allTags = await TagService.GetAllTagsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading search data");
+        }
+    }
+
+    private async Task HandleSearch()
+    {
+        if (!AuthService.IsAuthenticated || !AuthService.CurrentUserId.HasValue)
+            return;
+
+        try
+        {
+            isSearching = true;
+            hasSearched = true;
+
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                searchResults = await JournalService.SearchEntriesAsync(AuthService.CurrentUserId.Value, searchTerm);
+            }
+            else
+            {
+                searchResults = await JournalService.FilterEntriesAsync(
+                    AuthService.CurrentUserId.Value,
+                    startDate,
+                    endDate,
+                    selectedMoodIds.Any() ? selectedMoodIds : null,
+                    selectedTagIds.Any() ? selectedTagIds : null
+                );
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error searching entries");
+        }
+        finally
+        {
+            isSearching = false;
+        }
+    }
+
+    private void HandleClear()
+    {
+        searchTerm = string.Empty;
+        startDate = null;
+        endDate = null;
+        selectedMoodIds.Clear();
+        selectedTagIds.Clear();
+        searchResults.Clear();
+        hasSearched = false;
+    }
+
+    private void ToggleMood(int moodId, object? isChecked)
+    {
+        if (isChecked is bool checkedValue)
+        {
+            if (checkedValue)
+            {
+                selectedMoodIds.Add(moodId);
+            }
+            else
+            {
+                selectedMoodIds.Remove(moodId);
+            }
+        }
+    }
+
+    private void ToggleTag(int tagId, object? isChecked)
+    {
+        if (isChecked is bool checkedValue)
+        {
+            if (checkedValue)
+            {
+                selectedTagIds.Add(tagId);
+            }
+            else
+            {
+                selectedTagIds.Remove(tagId);
+            }
+        }
+    }
+}

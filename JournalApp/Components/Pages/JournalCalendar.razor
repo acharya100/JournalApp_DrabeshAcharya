@@ -1,0 +1,270 @@
+@page "/journal/calendar"
+@using JournalApp.Models
+@inject IAuthService AuthService
+@inject IJournalService JournalService
+@inject NavigationManager Navigation
+@inject ILogger<JournalCalendar> Logger
+@attribute [Authorize]
+
+<div class="calendar-container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Calendar View</h2>
+        <div class="d-flex gap-2 align-items-center">
+            <button class="btn btn-sm btn-outline-secondary" @onclick="PreviousMonth">← Previous</button>
+            <h4 class="mb-0">@currentMonth.ToString("MMMM yyyy")</h4>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="NextMonth">Next →</button>
+            <button class="btn btn-sm btn-primary" @onclick="GoToToday">Today</button>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="calendar-grid">
+            <div class="calendar-header">
+                @foreach (var day in dayNames)
+                {
+                    <div class="calendar-day-header">@day</div>
+                }
+            </div>
+            <div class="calendar-body">
+                @foreach (var day in calendarDays)
+                {
+                    <div class="calendar-day @(day.IsCurrentMonth ? "" : "other-month") @(day.IsToday ? "today" : "") @(day.HasEntry ? "has-entry" : "")"
+                         @onclick="() => HandleDayClick(day.Date)">
+                        <div class="day-number">@day.Date.Day</div>
+                        @if (day.HasEntry)
+                        {
+                            <div class="entry-indicator"></div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        @if (selectedEntry != null)
+        {
+            <div class="modal show d-block" style="background-color: rgba(0,0,0,0.5);" @onclick="CloseEntryModal">
+                <div class="modal-dialog" @onclick:stopPropagation="true">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">@selectedEntry.JournalTitle</h5>
+                            <button type="button" class="btn-close" @onclick="CloseEntryModal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p><strong>Date:</strong> @selectedEntry.EntryDate.ToString("MMMM dd, yyyy")</p>
+                            <p><strong>Mood:</strong> 
+                                <span class="badge bg-primary">@selectedEntry.PrimaryMood?.MoodName</span>
+                                @if (selectedEntry.SecondaryMoods != null && selectedEntry.SecondaryMoods.Any())
+                                {
+                                    @foreach (var sm in selectedEntry.SecondaryMoods)
+                                    {
+                                        <span class="badge bg-secondary">@sm.Mood?.MoodName</span>
+                                    }
+                                }
+                            </p>
+                            @if (selectedEntry.Tags != null && selectedEntry.Tags.Any())
+                            {
+                                <p><strong>Tags:</strong>
+                                    @foreach (var tag in selectedEntry.Tags)
+                                    {
+                                        <span class="badge bg-info">@tag.Tag?.TagName</span>
+                                    }
+                                </p>
+                            }
+                            <div class="mt-3">
+                                <h6>Content:</h6>
+                                <div class="border p-3" style="max-height: 300px; overflow-y: auto;">
+                                    @((MarkupString)selectedEntry.Content)
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer justify-content-between">
+                            <button type="button" class="btn btn-danger" @onclick="DeleteSelectedEntry">Delete</button>
+                            <div>
+                                <a href="/journal/edit/@selectedEntry.EntryId" class="btn btn-primary">Edit</a>
+                                <button type="button" class="btn btn-secondary" @onclick="CloseEntryModal">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@* Nuclear option for dark mode styles to bypass isolation issues *@
+<style>
+    [data-bs-theme="dark"] .calendar-day {
+        background-color: #2d2d2d !important;
+        color: #e0e0e0 !important;
+        border-color: #444 !important;
+    }
+
+    [data-bs-theme="dark"] .calendar-day:hover {
+        background-color: #3a3a3a !important;
+    }
+
+    [data-bs-theme="dark"] .calendar-day-header {
+        background-color: #3a3a3a !important;
+        color: #e0e0e0 !important;
+        border-bottom-color: #444 !important;
+    }
+
+    [data-bs-theme="dark"] .calendar-grid {
+        background-color: #444 !important;
+        border-color: #444 !important;
+    }
+    
+    [data-bs-theme="dark"] .calendar-day.today {
+        background-color: #0c4128 !important;
+    }
+    
+    [data-bs-theme="dark"] .calendar-day.other-month {
+        background-color: #1a1a1a !important;
+        color: #6c757d !important;
+    }
+</style>
+
+@code {
+    private DateTime currentMonth = DateTime.Now;
+    private List<CalendarDay> calendarDays = new();
+    private Dictionary<DateTime, JournalEntry> entriesByDate = new();
+    private JournalEntry? selectedEntry;
+    private bool isLoading = true;
+    private readonly string[] dayNames = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+    
+    [Inject] IJSRuntime JSRuntime { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!AuthService.IsAuthenticated || !AuthService.CurrentUserId.HasValue)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        await LoadCalendarData();
+    }
+
+    private async Task LoadCalendarData()
+    {
+        try
+        {
+            isLoading = true;
+            var startDate = new DateTime(currentMonth.Year, currentMonth.Month, 1);
+            var endDate = startDate.AddMonths(1).AddDays(-1);
+
+            var entries = await JournalService.FilterEntriesAsync(
+                AuthService.CurrentUserId!.Value,
+                startDate,
+                endDate,
+                null,
+                null
+            );
+
+            entriesByDate = entries.ToDictionary(e => e.EntryDate.Date, e => e);
+            BuildCalendar();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading calendar data");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void BuildCalendar()
+    {
+        calendarDays.Clear();
+        var firstDayOfMonth = new DateTime(currentMonth.Year, currentMonth.Month, 1);
+        var lastDayOfMonth = firstDayOfMonth.AddMonths(1).AddDays(-1);
+        var startDate = firstDayOfMonth.AddDays(-(int)firstDayOfMonth.DayOfWeek);
+        var today = DateTime.Now.Date;
+
+        for (int i = 0; i < 42; i++) // 6 weeks * 7 days
+        {
+            var date = startDate.AddDays(i);
+            calendarDays.Add(new CalendarDay
+            {
+                Date = date,
+                IsCurrentMonth = date.Month == currentMonth.Month,
+                IsToday = date == today,
+                HasEntry = entriesByDate.ContainsKey(date)
+            });
+        }
+    }
+
+    private Task HandleDayClick(DateTime date)
+    {
+        if (entriesByDate.TryGetValue(date, out var entry))
+        {
+            selectedEntry = entry;
+        }
+        // Do nothing if no entry exists, as per requirements
+        
+        return Task.CompletedTask;
+    }
+
+    private void CloseEntryModal()
+    {
+        selectedEntry = null;
+    }
+
+    private async Task DeleteSelectedEntry()
+    {
+        if (selectedEntry == null) return;
+
+        bool confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete this entry?");
+        if (confirmed)
+        {
+            try 
+            {
+                await JournalService.DeleteEntryAsync(selectedEntry.EntryId);
+                entriesByDate.Remove(selectedEntry.EntryDate.Date);
+                BuildCalendar(); // Refresh UI to remove indicator
+                CloseEntryModal();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error deleting entry");
+                // Ideally show a toast/alert here
+            }
+        }
+    }
+
+    private async Task PreviousMonth()
+    {
+        currentMonth = currentMonth.AddMonths(-1);
+        await LoadCalendarData();
+    }
+
+    private async Task NextMonth()
+    {
+        currentMonth = currentMonth.AddMonths(1);
+        await LoadCalendarData();
+    }
+
+    private async Task GoToToday()
+    {
+        currentMonth = DateTime.Now;
+        await LoadCalendarData();
+    }
+
+    private class CalendarDay
+    {
+        public DateTime Date { get; set; }
+        public bool IsCurrentMonth { get; set; }
+        public bool IsToday { get; set; }
+        public bool HasEntry { get; set; }
+    }
+}

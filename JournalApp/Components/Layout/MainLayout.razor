@@ -1,0 +1,87 @@
+﻿@inherits LayoutComponentBase
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+
+<div class="page">
+    @if (AuthService.IsAuthenticated)
+    {
+        <div class="sidebar">
+            <NavMenu />
+        </div>
+    }
+
+    <main>
+        <div class="top-row">
+            @if (AuthService.IsAuthenticated)
+            {
+                <div class="d-flex align-items-center me-4">
+                    <span class="me-3 fw-medium">Welcome, @AuthService.CurrentUsername</span>
+                    <button class="btn btn-sm btn-logout d-flex align-items-center gap-2" @onclick="HandleLogout">
+                        Logout
+                    </button>
+                </div>
+            }
+        </div>
+
+        <article class="content">
+            @Body
+        </article>
+    </main>
+</div>
+
+@code {
+    private async Task HandleLogout()
+    {
+        await AuthService.LogoutAsync();
+        Navigation.NavigateTo("/login");
+    }
+}
+
+<style>
+    /* Custom Logout Button */
+    .btn-logout {
+        border-radius: 50px; /* Pill shape */
+        padding: 0.4rem 1.2rem;
+        font-weight: 600;
+        transition: all 0.2s ease-in-out;
+        border: 2px solid #dc3545;
+        color: #dc3545;
+        background: transparent;
+        letter-spacing: 0.5px;
+    }
+
+    .btn-logout:hover {
+        background-color: #dc3545;
+        color: white;
+        box-shadow: 0 4px 12px rgba(220, 53, 69, 0.2);
+        transform: translateY(-1px);
+    }
+    
+    .btn-logout:active {
+        transform: translateY(0);
+    }
+
+    /* Force override for top-row in dark mode */
+    [data-bs-theme="dark"] .top-row {
+        background-color: #2d2d2d !important;
+        border-bottom-color: #444 !important;
+    }
+    
+    [data-bs-theme="dark"] .top-row .btn-link,
+    [data-bs-theme="dark"] .top-row a,
+    [data-bs-theme="dark"] .top-row span {
+        color: #e0e0e0 !important;
+    }
+
+    /* Logout Button Dark Mode Override */
+    [data-bs-theme="dark"] .btn-logout {
+        border-color: #ff6b6b;
+        color: #ff6b6b;
+    }
+
+    [data-bs-theme="dark"] .btn-logout:hover {
+        background-color: #ff6b6b;
+        color: #1a1a1a; /* Dark text on bright button for contrast */
+        box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+    }
+</style>

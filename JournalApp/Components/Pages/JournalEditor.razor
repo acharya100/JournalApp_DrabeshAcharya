@@ -1,0 +1,372 @@
+@page "/journal/new"
+@page "/journal/edit/{EntryId:int}"
+@using JournalApp.Models
+@inject IAuthService AuthService
+@inject IJournalService JournalService
+@inject IMoodService MoodService
+@inject ITagService TagService
+@inject NavigationManager Navigation
+@inject ILogger<JournalEditor> Logger
+@attribute [Authorize]
+
+<div class="journal-editor-container">
+    <h2 class="mb-4">@(IsEditMode ? "Edit Entry" : "New Entry")</h2>
+
+    @if (isLoading)
+    {
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else
+    {
+        <EditForm Model="@entryModel" OnValidSubmit="@HandleSave">
+            <DataAnnotationsValidator />
+            
+            <div class="card">
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="entryDate" class="form-label">Entry Date</label>
+                        <InputDate id="entryDate" class="form-control" @bind-Value="entryModel.EntryDate" />
+                        <ValidationMessage For="@(() => entryModel.EntryDate)" />
+                        @if (IsEditMode && existingEntry != null)
+                        {
+                            <small class="text-muted">Original date: @existingEntry.EntryDate.ToString("yyyy-MM-dd")</small>
+                        }
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="title" class="form-label">Title</label>
+                        <InputText id="title" class="form-control" @bind-Value="entryModel.Title" placeholder="Enter journal title..." />
+                        <ValidationMessage For="@(() => entryModel.Title)" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="content" class="form-label">Content</label>
+                        <!-- Quill Editor Container -->
+                        <div id="editor-container" style="height: 300px; background-color: var(--bs-card-bg);"></div>
+                        <small class="text-muted">Supports Rich Text formatting</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Primary Mood <span class="text-danger">*</span></label>
+                        <select class="form-select" @bind="entryModel.PrimaryMoodId">
+                            <option value="0">Select a mood</option>
+                            @foreach (var mood in moodsByCategory)
+                            {
+                                <optgroup label="@mood.Key">
+                                    @foreach (var moodItem in mood.Value)
+                                    {
+                                        <option value="@moodItem.MoodId">@moodItem.Emoji @moodItem.MoodName</option>
+                                    }
+                                </optgroup>
+                            }
+                        </select>
+                        <ValidationMessage For="@(() => entryModel.PrimaryMoodId)" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Secondary Moods (up to 2)</label>
+                        <div class="row">
+                            @foreach (var mood in moodsByCategory)
+                            {
+                                <div class="col-md-4 mb-2">
+                                    <strong>@mood.Key</strong>
+                                    @foreach (var moodItem in mood.Value)
+                                    {
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" 
+                                                   checked="@entryModel.SecondaryMoodIds.Contains(moodItem.MoodId)"
+                                                   @onchange="@((e) => ToggleSecondaryMood(moodItem.MoodId, e.Value))" />
+                                            <label class="form-check-label">
+                                                @moodItem.Emoji @moodItem.MoodName
+                                            </label>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        @if (entryModel.SecondaryMoodIds.Count > 2)
+                        {
+                            <small class="text-danger">Maximum 2 secondary moods allowed</small>
+                        }
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Tags</label>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <strong>Predefined Tags</strong>
+                                <div class="tag-container" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px;">
+                                    @foreach (var tag in predefinedTags)
+                                    {
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" 
+                                                   checked="@entryModel.TagIds.Contains(tag.TagId)"
+                                                   @onchange="@((e) => ToggleTag(tag.TagId, e.Value))" />
+                                            <label class="form-check-label">@tag.TagName</label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <strong>Custom Tags</strong>
+                                <div class="input-group mb-2">
+                                    <input type="text" class="form-control" @bind="newTagName" @bind:event="oninput" placeholder="Enter tag name" />
+                                    <button class="btn btn-outline-secondary" type="button" @onclick="AddCustomTag">Add</button>
+                                </div>
+                                <div class="tag-container" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px;">
+                                    @foreach (var tag in customTags)
+                                    {
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" 
+                                                   checked="@entryModel.TagIds.Contains(tag.TagId)"
+                                                   @onchange="@((e) => ToggleTag(tag.TagId, e.Value))" />
+                                            <label class="form-check-label">@tag.TagName</label>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
+                        <button type="submit" class="btn btn-primary" disabled="@isSaving">
+                            @if (isSaving)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2"></span>
+                            }
+                            Save Entry
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </EditForm>
+    }
+</div>
+
+@code {
+    [Parameter] public int? EntryId { get; set; }
+    [Inject] IJSRuntime JSRuntime { get; set; } = default!;
+
+    private EntryModel entryModel = new();
+    private JournalEntry? existingEntry;
+    private List<Mood> allMoods = new();
+    private List<Tag> predefinedTags = new();
+    private List<Tag> customTags = new();
+    private Dictionary<string, List<Mood>> moodsByCategory = new();
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private string newTagName = string.Empty;
+    private string? errorMessage;
+    private bool hasInitializedQuill = false;
+
+    private bool IsEditMode => EntryId.HasValue && EntryId.Value > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!AuthService.IsAuthenticated || !AuthService.CurrentUserId.HasValue)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        try
+        {
+            allMoods = await MoodService.GetAllMoodsAsync();
+            moodsByCategory = allMoods.GroupBy(m => m.Category).ToDictionary(g => g.Key, g => g.ToList());
+
+            var allTags = await TagService.GetAllTagsAsync();
+            predefinedTags = allTags.Where(t => t.IsPredefined).ToList();
+            customTags = allTags.Where(t => !t.IsPredefined).ToList();
+
+            if (IsEditMode && EntryId.HasValue)
+            {
+                existingEntry = await JournalService.GetEntryByIdAsync(EntryId.Value);
+                if (existingEntry == null)
+                {
+                    Navigation.NavigateTo("/");
+                    return;
+                }
+
+                entryModel = new EntryModel
+                {
+                    EntryDate = existingEntry.EntryDate,
+                    Title = existingEntry.JournalTitle,
+                    Content = existingEntry.Content, // Will be loaded into Quill later
+                    PrimaryMoodId = existingEntry.PrimaryMoodId,
+                    SecondaryMoodIds = existingEntry.SecondaryMoods?.Select(sm => sm.MoodId).ToList() ?? new List<int>(),
+                    TagIds = existingEntry.Tags?.Select(t => t.TagId).ToList() ?? new List<int>()
+                };
+            }
+            else
+            {
+                entryModel.EntryDate = DateTime.Now.Date;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error initializing journal editor");
+            errorMessage = "An error occurred while loading the editor.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!isLoading && !hasInitializedQuill)
+        {
+            // Initialize Quill Editor
+            await JSRuntime.InvokeVoidAsync("initQuill", "editor-container", entryModel.Content, "Write your thoughts here...");
+            hasInitializedQuill = true;
+        }
+    }
+
+    private async Task HandleSave()
+    {
+        if (!AuthService.IsAuthenticated || !AuthService.CurrentUserId.HasValue)
+            return;
+
+        if (entryModel.SecondaryMoodIds.Count > 2)
+        {
+            errorMessage = "Maximum 2 secondary moods allowed";
+            return;
+        }
+
+        try
+        {
+            // Get content from Quill
+            entryModel.Content = await JSRuntime.InvokeAsync<string>("getQuillContent", "editor-container");
+
+            isSaving = true;
+            errorMessage = null;
+
+            if (IsEditMode && EntryId.HasValue)
+            {
+                await JournalService.UpdateEntryAsync(
+                    EntryId.Value,
+                    entryModel.Title,
+                    entryModel.Content,
+                    entryModel.PrimaryMoodId,
+                    entryModel.SecondaryMoodIds,
+                    entryModel.TagIds
+                );
+            }
+            else
+            {
+                // Check if entry already exists for this date
+                if (await JournalService.EntryExistsForDateAsync(AuthService.CurrentUserId.Value, entryModel.EntryDate))
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", "You already have a journal entry for this date. Please edit the existing entry.");
+                    return;
+                }
+
+                await JournalService.CreateEntryAsync(
+                    AuthService.CurrentUserId.Value,
+                    entryModel.EntryDate,
+                    entryModel.Title,
+                    entryModel.Content,
+                    entryModel.PrimaryMoodId,
+                    entryModel.SecondaryMoodIds,
+                    entryModel.TagIds
+                );
+            }
+
+            Navigation.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error saving journal entry");
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void HandleCancel()
+    {
+        Navigation.NavigateTo("/");
+    }
+
+    private void ToggleSecondaryMood(int moodId, object? isChecked)
+    {
+        if (isChecked is bool checkedValue)
+        {
+            if (checkedValue)
+            {
+                if (entryModel.SecondaryMoodIds.Count < 2)
+                {
+                    entryModel.SecondaryMoodIds.Add(moodId);
+                }
+            }
+            else
+            {
+                entryModel.SecondaryMoodIds.Remove(moodId);
+            }
+        }
+    }
+
+    private void ToggleTag(int tagId, object? isChecked)
+    {
+        if (isChecked is bool checkedValue)
+        {
+            if (checkedValue)
+            {
+                entryModel.TagIds.Add(tagId);
+            }
+            else
+            {
+                entryModel.TagIds.Remove(tagId);
+            }
+        }
+    }
+
+    private async Task AddCustomTag()
+    {
+        if (string.IsNullOrWhiteSpace(newTagName))
+            return;
+
+        try
+        {
+            var tag = await TagService.CreateTagAsync(newTagName.Trim());
+            if (tag != null)
+            {
+                customTags.Add(tag);
+                entryModel.TagIds.Add(tag.TagId);
+                newTagName = string.Empty;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error adding custom tag");
+            errorMessage = "Error adding custom tag: " + ex.Message;
+        }
+    }
+
+    private class EntryModel
+    {
+        [Required]
+        public DateTime EntryDate { get; set; } = DateTime.Now.Date;
+
+        [Required(ErrorMessage = "Title is required")]
+        [StringLength(500, ErrorMessage = "Title cannot exceed 500 characters")]
+        public string Title { get; set; } = string.Empty;
+
+        public string Content { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Primary mood is required")]
+        [Range(1, int.MaxValue, ErrorMessage = "Please select a primary mood")]
+        public int PrimaryMoodId { get; set; }
+
+        public List<int> SecondaryMoodIds { get; set; } = new();
+        public List<int> TagIds { get; set; } = new();
+    }
+}
